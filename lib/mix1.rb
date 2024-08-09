@@ -1,22 +1,18 @@
-# frozen_string_literal: true
-
 require "digest"
 require "stringio"
-require_relative "mix1/version"
 
 # https://github.com/TheUnstoppable/MixLibrary used for reference
 class Mix1
   DEFAULT_BUFFER_SIZE = 32_000_000
 
   class MixParserException < RuntimeError; end
-
   class MixFormatException < RuntimeError; end
 
   class MemoryBuffer
     def initialize(file_path:, mode:, buffer_size:, encoding: Encoding::ASCII_8BIT)
       @mode = mode
 
-      @file = File.open(file_path, (mode == :read) ? "rb" : "wb")
+      @file = File.open(file_path, mode == :read ? "rb" : "wb")
       @file.pos = 0
       @file_size = File.size(file_path)
 
@@ -29,7 +25,7 @@ class Mix1
       @encoding = encoding
 
       @last_buffer_pos = 0
-      @buffer = (@mode == :read) ? StringIO.new(@file.read(@buffer_size)) : StringIO.new
+      @buffer = @mode == :read ? StringIO.new(@file.read(@buffer_size)) : StringIO.new
       @buffer.set_encoding(encoding)
 
       # Cache frequently accessed chunks to reduce disk hits
@@ -179,7 +175,7 @@ class Mix1
       @file.pos = @last_chunk * @buffer_size
       @file.write(string)
 
-      @buffer.string = ""
+      @buffer.string = "".force_encoding(@encoding)
     end
 
     def string
@@ -241,17 +237,18 @@ class Mix1
       else
         raise MixParserException, "Invalid MIX file"
       end
+
     ensure
       @buffer&.close
       @buffer = nil # let GC collect
     end
 
     def read_i32
-      @buffer.read(4).unpack1("l")
+      @buffer.read(4).unpack1("l<")
     end
 
     def read_u32
-      @buffer.read(4).unpack1("L")
+      @buffer.read(4).unpack1("L<")
     end
 
     def read_string
@@ -278,7 +275,7 @@ class Mix1
 
       @buffer.write("MIX1")
 
-      files = @package.files.sort_by(&:file_crc)
+      files = @package.files.sort { |a, b| a.file_crc <=> b.file_crc }
 
       @buffer.pos = 16
 
@@ -313,11 +310,11 @@ class Mix1
     end
 
     def write_i32(int)
-      @buffer.write([int].pack("l"))
+      @buffer.write([int].pack("l<"))
     end
 
     def write_u32(uint)
-      @buffer.write([uint].pack("L"))
+      @buffer.write([uint].pack("L<"))
     end
 
     def write_byte(byte)
